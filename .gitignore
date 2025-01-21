@@ -1,0 +1,8 @@
+bin
+build-unix
+data/log
+log.txt
+log
+gmon.out
+core
+config/db_conf.ini
