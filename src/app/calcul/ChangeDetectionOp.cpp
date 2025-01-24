@@ -159,110 +159,99 @@ namespace app
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
 
-            ign::feature::FeatureFilter filterSource(countryCodeName+"='"+_countryCode+"'");
+            std::vector<ign::geometry::Envelope> vBbox = _getBboxes();
+            for (std::vector<ign::geometry::Envelope>::const_iterator vit = vBbox.begin() ; vit != vBbox.end() ; ++vit ) {
 
-            //DEBUG
-            // epg::tools::FilterTools::addAndConditions(filterSource, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
-
-
-            //LOAD START
-            std::string const landTableName = themeParameters->getValue(LANDMASK_TABLE).toString();
-            std::string const idName = epgParams.getValue(ID).toString();
-            ign::feature::sql::FeatureStorePostgis* fsLand = epg::ContextS::getInstance()->getDataBaseManager().getFeatureStore(landTableName, idName, geomName);
-            ign::feature::FeatureIteratorPtr itLand = fsLand->getFeatures(filterSource);
-            ign::geometry::Envelope landBbox;
-            while (itLand->hasNext())
-            {
-                ign::feature::Feature const& fLand = itLand->next();
-                ign::geometry::Geometry const& geomLand = fLand.getGeometry();
-                landBbox.expandToInclude( geomLand.getEnvelope() );
-            }
-            delete fsLand;
-            ign::geometry::index::QuadTree<int> qTree;
-            std::vector<ign::feature::Feature> vFeatures;
-            qTree.ensureExtent( landBbox );
-
-            ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
-            int numTargetFeatures = epg::sql::tools::numFeatures(*fsTarget, filterTarget);
-            boost::progress_display displayLoad(numTargetFeatures, std::cout, "[ load target % complete ]\n");
-            ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
-            while (itTarget->hasNext())
-            {
-                ++displayLoad;
-                ign::feature::Feature const& fTarget = itTarget->next();
-                ign::geometry::Geometry const& geomSource = fTarget.getGeometry();
-
-                vFeatures.push_back(fTarget);
-                qTree.insert( vFeatures.size()-1, geomSource.getEnvelope() );
-            }
-            //LOAD END
-
-            int numSourceFeatures = epg::sql::tools::numFeatures(*fsSource, filterSource);
-            boost::progress_display display(numSourceFeatures, std::cout, "[ oriented change detection % complete ]\n");
-
-            ign::feature::FeatureIteratorPtr itSource = fsSource->getFeatures(filterSource);
-            while (itSource->hasNext())
-            {
-                ++display;
-                
-                ign::feature::Feature const& fSource = itSource->next();
-                ign::geometry::Geometry const& geomSource = fSource.getGeometry();
-                std::string idSource = fSource.getId();
-
+                ign::feature::FeatureFilter filter(*vit, countryCodeName+"='"+_countryCode+"'");
                 //DEBUG
-                // if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                //     bool test = true;
-                // }
+                // epg::tools::FilterTools::addAndConditions(filter, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
 
-                ign::feature::Feature fCd = _fsCd->newFeature();
-                fCd.setAttribute(idSourceName, ign::data::String(idSource));
-                fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
+                 //LOAD START
+                ign::geometry::index::QuadTree<int> qTree;
+                std::vector<ign::feature::Feature> vFeatures;
+                qTree.ensureExtent( *vit );
 
-                /// \todo voir si c'est mieux de conserver tous les matchs ou juste le meilleur
-                double distMax = distThreshold;
-                std::string idMax = "";
-                bool attEqualMax = false;
+                int numTargetFeatures = epg::sql::tools::numFeatures(*fsTarget, filter);
+                boost::progress_display displayLoad(numTargetFeatures, std::cout, "[ load target % complete ]\n");
+                ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filter);
+                while (itTarget->hasNext())
+                {
+                    ++displayLoad;
+                    ign::feature::Feature const& fTarget = itTarget->next();
+                    ign::geometry::Geometry const& geomSource = fTarget.getGeometry();
 
-                //NEW
-                epg::tools::MultiLineStringTool sourceMlsTool( geomSource );
-                std::set<int> sTarget;
-                qTree.query( geomSource.getEnvelope(), sTarget );
-                for( std::set<int>::const_iterator sit = sTarget.begin() ; sit != sTarget.end() ; ++sit ) {
-                    ign::feature::Feature const& fTarget = vFeatures[*sit];
-                    std::string idTarget = fTarget.getId();
-                    double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), distThreshold);
+                    vFeatures.push_back(fTarget);
+                    qTree.insert( vFeatures.size()-1, geomSource.getEnvelope() );
+                }
+                //LOAD END
 
-                // ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
-				// epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
-                // ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
-                // while (itTarget->hasNext())
-                // {
-                //     ign::feature::Feature const& fTarget = itTarget->next();
-                //     ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
-                //     std::string idTarget = fTarget.getId();
+                int numSourceFeatures = epg::sql::tools::numFeatures(*fsSource, filter);
+                boost::progress_display display(numSourceFeatures, std::cout, "[ oriented change detection % complete ]\n");
+
+                ign::feature::FeatureIteratorPtr itSource = fsSource->getFeatures(filter);
+                while (itSource->hasNext())
+                {
+                    ++display;
+                    
+                    ign::feature::Feature const& fSource = itSource->next();
+                    ign::geometry::Geometry const& geomSource = fSource.getGeometry();
+                    std::string idSource = fSource.getId();
 
                     //DEBUG
-                    // if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                    // if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
                     //     bool test = true;
                     // }
 
-                    // double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
-                    
-                    if( hausdorffDist >= 0 && hausdorffDist < distMax) {
-                        distMax = hausdorffDist;
-                        idMax = idTarget;
-                        if ( withAttrCompare ) attEqualMax = _attributsEqual(fSource, fTarget);
+                    ign::feature::Feature fCd = _fsCd->newFeature();
+                    fCd.setAttribute(idSourceName, ign::data::String(idSource));
+                    fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
+
+                    /// \todo voir si c'est mieux de conserver tous les matchs ou juste le meilleur
+                    double distMax = distThreshold;
+                    std::string idMax = "";
+                    bool attEqualMax = false;
+
+                    //NEW
+                    epg::tools::MultiLineStringTool sourceMlsTool( geomSource );
+                    std::set<int> sTarget;
+                    qTree.query( geomSource.getEnvelope(), sTarget );
+                    for( std::set<int>::const_iterator sit = sTarget.begin() ; sit != sTarget.end() ; ++sit ) {
+                        ign::feature::Feature const& fTarget = vFeatures[*sit];
+                        std::string idTarget = fTarget.getId();
+                        double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), distThreshold);
+
+                    // ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
+                    // epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
+                    // ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
+                    // while (itTarget->hasNext())
+                    // {
+                    //     ign::feature::Feature const& fTarget = itTarget->next();
+                    //     ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
+                    //     std::string idTarget = fTarget.getId();
+
+                        //DEBUG
+                        // if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                        //     bool test = true;
+                        // }
+
+                        // double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
                         
-                        if ( distMax == 0 ) break;
+                        if( hausdorffDist >= 0 && hausdorffDist < distMax) {
+                            distMax = hausdorffDist;
+                            idMax = idTarget;
+                            if ( withAttrCompare ) attEqualMax = _attributsEqual(fSource, fTarget);
+                            
+                            if ( distMax == 0 ) break;
+                        } 
+                    }
+                    if ( idMax != "" ) {
+                        if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(attEqualMax));
+                        fCd.setAttribute(geomMatchName, ign::data::Boolean(distMax==0));
+                        fCd.setAttribute(idTargetName, ign::data::String(idMax));
                     } 
+                    
+                    _fsCd->createFeature(fCd);  
                 }
-                if ( idMax != "" ) {
-                    if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(attEqualMax));
-                    fCd.setAttribute(geomMatchName, ign::data::Boolean(distMax==0));
-                    fCd.setAttribute(idTargetName, ign::data::String(idMax));
-                } 
-                
-                _fsCd->createFeature(fCd);  
             }
         }
 
@@ -368,9 +357,9 @@ namespace app
             std::multimap<std::string, std::pair<bool, bool>>::const_iterator mmit;
             for( mmit = mmMatch.begin() ; mmit != mmMatch.end() ; ++mmit ) {
                 //DEBUG
-                if( mmit->first == "73c3038d-1629-43d9-a5ea-7116a8e36202+73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                    bool test = true;
-                }
+                // if( mmit->first == "73c3038d-1629-43d9-a5ea-7116a8e36202+73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                //     bool test = true;
+                // }
 
                 ++display2;
                 if (sTreated.find(mmit->first) != sTreated.end() ) continue;
@@ -400,6 +389,44 @@ namespace app
 
             //DEBUG
             _updateCDTAble( vpModified, sDeleted, sCreated );
+        }
+
+        ///
+        ///
+        ///
+        std::vector<ign::geometry::Envelope> ChangeDetectionOp::_getBboxes() const {
+
+            return std::vector<ign::geometry::Envelope>(1,ign::geometry::LineString(ign::geometry::Point(4007120, 3018635), ign::geometry::Point(4077702, 2931477)).getEnvelope());
+
+            std::vector<ign::geometry::Envelope> vBbox;
+
+            //--
+            epg::Context *context = epg::ContextS::getInstance();
+
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const idName = epgParams.getValue(ID).toString();
+            std::string const geomName = epgParams.getValue(GEOM).toString();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+            
+            // theme parameters
+            params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
+            std::string const landTableName = themeParameters->getValue(LANDMASK_TABLE).toString();
+
+            ign::feature::FeatureFilter filter(countryCodeName+"='"+_countryCode+"'");
+            ign::feature::sql::FeatureStorePostgis* fsLand = epg::ContextS::getInstance()->getDataBaseManager().getFeatureStore(landTableName, idName, geomName);
+            ign::feature::FeatureIteratorPtr itLand = fsLand->getFeatures(filter);
+            ign::geometry::Envelope landBbox;
+            while (itLand->hasNext())
+            {
+                ign::feature::Feature const& fLand = itLand->next();
+                ign::geometry::Geometry const& geomLand = fLand.getGeometry();
+
+                vBbox.push_back(geomLand.getEnvelope());
+            }
+            delete fsLand;
+
+            return vBbox;
         }
 
         ///

@@ -81,6 +81,9 @@ namespace calcul{
 		void _computeChangeDetection() const;
 
 		//--
+		std::vector<ign::geometry::Envelope> _getBboxes() const;
+
+		//--
 		void _updateCDTAble(
             std::vector<std::pair<std::string, std::string>> const& vpModified,
             std::set<std::string> const& sDeleted,
