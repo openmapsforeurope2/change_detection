@@ -89,6 +89,8 @@ namespace app
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 			
+            _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
+            
 			if ( !context->getDataBaseManager().tableExists(cdTableName) ) {
 				std::ostringstream ss;
 				ss << "CREATE TABLE " << cdTableName << "("
@@ -158,7 +160,7 @@ namespace app
             ign::feature::FeatureFilter filterSource(countryCodeName+"='"+_countryCode+"'");
 
             //DEBUG
-            epg::tools::FilterTools::addAndConditions(filterSource, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
+            // epg::tools::FilterTools::addAndConditions(filterSource, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
 
             int numSourceFeatures = epg::sql::tools::numFeatures(*fsSource, filterSource);
             boost::progress_display display(numSourceFeatures, std::cout, "[ oriented change detection % complete ]\n");
@@ -173,9 +175,9 @@ namespace app
                 std::string idSource = fSource.getId();
 
                 //DEBUG
-                if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                    bool test = true;
-                }
+                // if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                //     bool test = true;
+                // }
 
                 ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
 				epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
