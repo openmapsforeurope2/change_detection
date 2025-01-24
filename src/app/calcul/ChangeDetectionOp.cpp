@@ -13,9 +13,11 @@
 #include <epg/tools/StringTools.h>
 #include <epg/tools/TimeTools.h>
 #include <epg/tools/FilterTools.h>
+#include <epg/tools/MultiLineStringTool.h>
 
 //SOCLE
 #include <ign/geometry/algorithm/OptimizedHausdorffDistanceOp.h>
+#include <ign/geometry/index/QuadTree.h>
 
 
 namespace app
@@ -162,6 +164,39 @@ namespace app
             //DEBUG
             // epg::tools::FilterTools::addAndConditions(filterSource, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
 
+
+            //LOAD START
+            std::string const landTableName = themeParameters->getValue(LANDMASK_TABLE).toString();
+            std::string const idName = epgParams.getValue(ID).toString();
+            ign::feature::sql::FeatureStorePostgis* fsLand = epg::ContextS::getInstance()->getDataBaseManager().getFeatureStore(landTableName, idName, geomName);
+            ign::feature::FeatureIteratorPtr itLand = fsLand->getFeatures(filterSource);
+            ign::geometry::Envelope landBbox;
+            while (itLand->hasNext())
+            {
+                ign::feature::Feature const& fLand = itLand->next();
+                ign::geometry::Geometry const& geomLand = fLand.getGeometry();
+                landBbox.expandToInclude( geomLand.getEnvelope() );
+            }
+            delete fsLand;
+            ign::geometry::index::QuadTree<int> qTree;
+            std::vector<ign::feature::Feature> vFeatures;
+            qTree.ensureExtent( landBbox );
+
+            ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
+            int numTargetFeatures = epg::sql::tools::numFeatures(*fsTarget, filterTarget);
+            boost::progress_display displayLoad(numTargetFeatures, std::cout, "[ load target % complete ]\n");
+            ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
+            while (itTarget->hasNext())
+            {
+                ++displayLoad;
+                ign::feature::Feature const& fTarget = itTarget->next();
+                ign::geometry::Geometry const& geomSource = fTarget.getGeometry();
+
+                vFeatures.push_back(fTarget);
+                qTree.insert( vFeatures.size()-1, geomSource.getEnvelope() );
+            }
+            //LOAD END
+
             int numSourceFeatures = epg::sql::tools::numFeatures(*fsSource, filterSource);
             boost::progress_display display(numSourceFeatures, std::cout, "[ oriented change detection % complete ]\n");
 
@@ -179,9 +214,6 @@ namespace app
                 //     bool test = true;
                 // }
 
-                ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
-				epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
-
                 ign::feature::Feature fCd = _fsCd->newFeature();
                 fCd.setAttribute(idSourceName, ign::data::String(idSource));
                 fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
@@ -190,19 +222,31 @@ namespace app
                 double distMax = distThreshold;
                 std::string idMax = "";
                 bool attEqualMax = false;
-                ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
-                while (itTarget->hasNext())
-                {
-                    ign::feature::Feature const& fTarget = itTarget->next();
-                    ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
+
+                //NEW
+                epg::tools::MultiLineStringTool sourceMlsTool( geomSource );
+                std::set<int> sTarget;
+                qTree.query( geomSource.getEnvelope(), sTarget );
+                for( std::set<int>::const_iterator sit = sTarget.begin() ; sit != sTarget.end() ; ++sit ) {
+                    ign::feature::Feature const& fTarget = vFeatures[*sit];
                     std::string idTarget = fTarget.getId();
+                    double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), distThreshold);
+
+                // ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
+				// epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
+                // ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
+                // while (itTarget->hasNext())
+                // {
+                //     ign::feature::Feature const& fTarget = itTarget->next();
+                //     ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
+                //     std::string idTarget = fTarget.getId();
 
                     //DEBUG
-                    if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                        bool test = true;
-                    }
+                    // if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                    //     bool test = true;
+                    // }
 
-                    double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
+                    // double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
                     
                     if( hausdorffDist >= 0 && hausdorffDist < distMax) {
                         distMax = hausdorffDist;
