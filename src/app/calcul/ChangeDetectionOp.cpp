@@ -30,7 +30,8 @@ namespace app
             bool verbose
         ) : 
             _countryCode(borderCode),
-            _verbose(verbose)
+            _verbose(verbose),
+            _separator("+")
         {
             _init();
         }
@@ -130,6 +131,7 @@ namespace app
 
             _computeOrientedChangeDetection(_fsRef, idRefName, _fsUp, idUpName);
             _computeOrientedChangeDetection(_fsUp, idUpName, _fsRef, idRefName, false);
+            _computeChangeDetection();
         }
 
         ///
@@ -154,6 +156,10 @@ namespace app
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
 
             ign::feature::FeatureFilter filterSource(countryCodeName+"='"+_countryCode+"'");
+
+            //DEBUG
+            epg::tools::FilterTools::addAndConditions(filterSource, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
+
             int numSourceFeatures = epg::sql::tools::numFeatures(*fsSource, filterSource);
             boost::progress_display display(numSourceFeatures, std::cout, "[ oriented change detection % complete ]\n");
 
@@ -165,6 +171,11 @@ namespace app
                 ign::feature::Feature const& fSource = itSource->next();
                 ign::geometry::Geometry const& geomSource = fSource.getGeometry();
                 std::string idSource = fSource.getId();
+
+                //DEBUG
+                if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                    bool test = true;
+                }
 
                 ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
 				epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
@@ -183,6 +194,11 @@ namespace app
                     ign::feature::Feature const& fTarget = itTarget->next();
                     ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
                     std::string idTarget = fTarget.getId();
+
+                    //DEBUG
+                    if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                        bool test = true;
+                    }
 
                     double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
                     
@@ -236,7 +252,159 @@ namespace app
                 if( mit2->second != mit1->second ) return false;
             }
             return true;
+        }
 
+        // supprimer les doublons si dallage
+        // si id1 apparaît un nombre de fois autre que 2 on supprime objet1
+        // si id2 apparaît un nombre de fois autre que 2 on ajoute objet2
+        // si on a 2 fois le couple id1/id2 on regarde si stable ou modifié
+        // pour les cas qui restent (couples qu'on ne trouve qu'une fois) : on supprime l'objet de la table 1 et on ajout objet de la table 2
+        void ChangeDetectionOp::_computeChangeDetection() const {
+            //--
+            epg::Context *context = epg::ContextS::getInstance();
+
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+            
+            // app parameters
+            params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
+            std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
+            std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+            std::string const idRefName = themeParameters->getValue(ID_REF).toString();
+            std::string const idUpName = themeParameters->getValue(ID_UP).toString();
+
+            // 1ere passe:
+            // On rempli les containers
+            std::set<std::string> sDeleted;
+            std::set<std::string> sCreated;
+            std::multimap<std::string, std::pair<bool, bool>> mmMatch; // concaténer id1/id2
+
+            ign::feature::FeatureFilter filter(countryCodeName+"='"+_countryCode+"'");
+            int numFeatures = epg::sql::tools::numFeatures(*_fsCd, filter);
+            boost::progress_display display(numFeatures, std::cout, "[ change detection (1/2) % complete ]\n");
+
+            ign::feature::FeatureIteratorPtr itFeatCd = _fsCd->getFeatures(filter);
+            while (itFeatCd->hasNext())
+            {
+                ++display;
+
+                ign::feature::Feature const& fCd = itFeatCd->next();
+                ign::data::Variant const& idRef = fCd.getAttribute(idRefName);
+                ign::data::Variant const& idUp = fCd.getAttribute(idUpName);
+                ign::data::Variant const& attrMatch = fCd.getAttribute(attrMatchName);
+                ign::data::Variant const& geomMatch = fCd.getAttribute(geomMatchName);
+
+                //Si idRef not defined
+                if (fCd.getAttribute(idRefName).isNull())
+                    sCreated.insert(idUp.toString());
+                //Si idUp not defined
+                else if (fCd.getAttribute(idUpName).isNull())
+                    sDeleted.insert(idRef.toString());
+                else {
+                    //si attrMatch not defined -> le mettre à true (null lors de la comparaison t2 -> t1 car déjà calculé lors de la comparaison t1 -> t2)
+                    bool isAttMatch = attrMatch.isNull() ? true : attrMatch.toBoolean();
+                    mmMatch.insert(std::make_pair(idRef.toString()+_separator+idUp.toString(), std::make_pair(geomMatch.toBoolean(), isAttMatch)));
+                }
+            }
+
+            // 2eme passe :
+            std::vector<std::pair<std::string, std::string>> vpModified;
+            // on parcours mmMatch
+            // Si on trouve 2 fois id1/id2 = match
+            //   Si modif on ajoute dans vpModified
+            //   Si stab on ne fait rien
+            // Sinon on ajoute id1 dans sDeleted et id2 dans sCreated
+            std::set<std::string> sTreated;
+
+            boost::progress_display display2(mmMatch.size(), std::cout, "[ change detection(2/2) % complete ]\n");
+
+            std::multimap<std::string, std::pair<bool, bool>>::const_iterator mmit;
+            for( mmit = mmMatch.begin() ; mmit != mmMatch.end() ; ++mmit ) {
+                //DEBUG
+                if( mmit->first == "73c3038d-1629-43d9-a5ea-7116a8e36202+73c3038d-1629-43d9-a5ea-7116a8e36202") {
+                    bool test = true;
+                }
+
+                ++display2;
+                if (sTreated.find(mmit->first) != sTreated.end() ) continue;
+
+                size_t count = 0;
+                bool stability = true;
+                auto range = mmMatch.equal_range(mmit->first);
+                for (auto rit = range.first; rit != range.second; ++rit) {
+                    ++count;
+                    if (!rit->second.first || !rit->second.second ) stability = false;
+                }
+                if (count == 2) {
+                    if ( !stability ) {
+                        std::vector<std::string> vIds;
+                        epg::tools::StringTools::Split(mmit->first, _separator, vIds);
+                        vpModified.push_back(std::make_pair(vIds.front(), vIds.back()));
+                    }
+                } else {
+                    std::vector<std::string> vIds;
+                    epg::tools::StringTools::Split(mmit->first, _separator, vIds);
+                    sDeleted.insert(vIds.front());
+                    sCreated.insert(vIds.back());
+                }
+
+                sTreated.insert(mmit->first);
+            }
+
+            //DEBUG
+            _updateCDTAble( vpModified, sDeleted, sCreated );
+        }
+
+        ///
+        ///
+        ///
+        void ChangeDetectionOp::_updateCDTAble(
+            std::vector<std::pair<std::string, std::string>> const& vpModified,
+            std::set<std::string> const& sDeleted,
+            std::set<std::string> const& sCreated
+        ) const {
+            //--
+            epg::Context *context = epg::ContextS::getInstance();
+            
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = epg::ContextS::getInstance()->getEpgParameters();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+
+            // app parameters
+            params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
+            std::string const tableName = themeParameters->getValue(TABLE).toString();
+            std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
+            std::string const idRefName = themeParameters->getValue(ID_REF).toString();
+            std::string const idUpName = themeParameters->getValue(ID_UP).toString();
+
+            {
+                std::ostringstream ss;
+                ss << "DELETE FROM " << cdTableName << " WHERE " << countryCodeName << " = '" << _countryCode << "';";
+                context->getDataBaseManager().getConnection()->update(ss.str());
+            }
+            
+            ign::feature::Feature fCd = _fsCd->newFeature();
+            fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
+            
+            std::vector<std::pair<std::string, std::string>>::const_iterator vpit;
+            for( vpit = vpModified.begin() ; vpit != vpModified.end() ; ++vpit ) {
+                fCd.setAttribute(idRefName, ign::data::String(vpit->first));
+                fCd.setAttribute(idUpName, ign::data::String(vpit->second));
+                _fsCd->createFeature(fCd); 
+            }
+
+            fCd.setAttribute(idUpName, ign::data::Null());
+            for( std::set<std::string>::const_iterator sit = sDeleted.begin() ; sit != sDeleted.end() ; ++sit ) {
+                fCd.setAttribute(idRefName, ign::data::String(*sit));
+                _fsCd->createFeature(fCd);
+            }
+
+            fCd.setAttribute(idRefName, ign::data::Null());
+            for( std::set<std::string>::const_iterator sit = sCreated.begin() ; sit != sCreated.end() ; ++sit ) {
+                fCd.setAttribute(idUpName, ign::data::String(*sit));
+                _fsCd->createFeature(fCd);
+            }
         }
     }
 }

@@ -17,8 +17,9 @@ namespace params{
 	{
 		_initParameter( DB_CONF_FILE, "DB_CONF_FILE");
 		_initParameter( COUNTRY_CODE_W, "COUNTRY_CODE_W");
-		_initParameter( WORKING_SCHEMA, "WORKING_SCHEMA");
 		_initParameter( LANDMASK_TABLE, "LANDMASK_TABLE");
+		_initParameter( REF_SCHEMA, "REF_SCHEMA");
+		_initParameter( UP_SCHEMA, "UP_SCHEMA");
 		_initParameter( TABLE, "TABLE");
 		_initParameter( TABLE_REF_SUFFIX, "TABLE_REF_SUFFIX");
 		_initParameter( TABLE_UP_SUFFIX, "TABLE_UP_SUFFIX");

@@ -51,6 +51,8 @@ namespace calcul{
 		std::string                                              _countryCode;
 		//--
 		bool                                                     _verbose;
+		//--
+		std::string                                              _separator;
 
 	private:
 
@@ -74,6 +76,16 @@ namespace calcul{
 			ign::feature::Feature const& feat1,
 			ign::feature::Feature const& feat2
 		) const;
+
+		//--
+		void _computeChangeDetection() const;
+
+		//--
+		void _updateCDTAble(
+            std::vector<std::pair<std::string, std::string>> const& vpModified,
+            std::set<std::string> const& sDeleted,
+            std::set<std::string> const& sCreated
+        ) const;
 
     };
 

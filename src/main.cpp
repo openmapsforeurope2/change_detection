@@ -105,7 +105,8 @@ int main(int argc, char *argv[])
 	    shapeLogger->setDataDirectory( context->getLogDirectory()+"/shape" );
 
         //set BDD search path
-        context->getDataBaseManager().setSearchPath(themeParameters->getValue(WORKING_SCHEMA).toString());
+        context->getDataBaseManager().setSearchPath(themeParameters->getValue(UP_SCHEMA).toString());
+        context->getDataBaseManager().setSearchPath(themeParameters->getValue(REF_SCHEMA).toString());
         ome2::utils::setTableName<app::params::ThemeParametersS>(LANDMASK_TABLE);
         
 		logger->log(epg::log::INFO, "[START CHANGE DETECTION PROCESS ] " + epg::tools::TimeTools::getTime());
