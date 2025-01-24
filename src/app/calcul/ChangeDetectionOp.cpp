@@ -91,9 +91,21 @@ namespace app
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 			
-            _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
+            
             
 			if ( !context->getDataBaseManager().tableExists(cdTableName) ) {
+
+                //DEBUG
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
+
+                std::string oldSearchPath = context->getDataBaseManager().getPGSearchPath();
+                context->getDataBaseManager().setSearchPath(themeParameters->getValue(UP_SCHEMA).toString());
+
+                //DEBUG
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
+
 				std::ostringstream ss;
 				ss << "CREATE TABLE " << cdTableName << "("
                     << geomName << " geometry,"
@@ -109,6 +121,12 @@ namespace app
                     << "CREATE INDEX " << cdTableName +"_"+countryCodeName+"_idx ON " << cdTableName << " USING btree ("<< countryCodeName <<");";
 
 				context->getDataBaseManager().getConnection()->update(ss.str());
+
+                context->getDataBaseManager().setSearchPath(oldSearchPath);
+
+                //DEBUG
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
+                _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
 			} else {
                 std::ostringstream ss;
                 ss << "DELETE FROM " << cdTableName << " WHERE " << countryCodeName << " = '" << _countryCode << "';";
