@@ -82,7 +82,8 @@ namespace app
             
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string const tableName = themeParameters->getValue(TABLE).toString();
+            std::string const themeName = themeParameters->getValue(THEME_W).toString();
+            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
             std::string refTableName = tableName + themeParameters->getValue(TABLE_REF_SUFFIX).toString();
             std::string upTableName = tableName + themeParameters->getValue(TABLE_UP_SUFFIX).toString();
             std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
@@ -90,21 +91,19 @@ namespace app
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
-			
-            
+            std::string const separator = themeParameters->getValue(CD_IGNORED_FIELDS_SEPARATOR).toString();
+            std::string const ignoredCommonFields = themeParameters->getValue(CD_IGNORED_COMMON_FIELDS).toString();
+            std::string ignoredThemeFields = "";
+            if ( themeName == "tn" )
+                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_TN_FIELDS).toString();
+            if ( themeName == "hy" )
+                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_HY_FIELDS).toString();
+            if ( themeName == "au" )
+                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_AU_FIELDS).toString();
+            if ( themeName == "ib" )
+                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_IB_FIELDS).toString();
             
 			if ( !context->getDataBaseManager().tableExists(cdTableName) ) {
-
-                //DEBUG
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
-
-                // std::string oldSearchPath = context->getDataBaseManager().getPGSearchPath();
-                // context->getDataBaseManager().setSearchPath(themeParameters->getValue(UP_SCHEMA).toString());
-
-                // //DEBUG
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
 
 				std::ostringstream ss;
 				ss << "CREATE TABLE " << cdTableName << "("
@@ -122,11 +121,6 @@ namespace app
 
 				context->getDataBaseManager().getConnection()->update(ss.str());
 
-                // context->getDataBaseManager().setSearchPath(oldSearchPath);
-
-                // //DEBUG
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getPGSearchPath());
-                // _logger->log(epg::log::DEBUG, context->getDataBaseManager().getSearchPath());
 			} else {
                 std::ostringstream ss;
                 ss << "DELETE FROM " << cdTableName << " WHERE " << countryCodeName << " = '" << _countryCode << "';";
@@ -137,6 +131,12 @@ namespace app
             _fsRef = context->getDataBaseManager().getFeatureStore(refTableName, idName, geomName);
             _fsUp = context->getDataBaseManager().getFeatureStore(upTableName, idName, geomName);
             _fsCd = context->getDataBaseManager().getFeatureStore(cdTableName, idName, geomName);
+
+            //--
+            std::vector<std::string> vParts;;
+	        epg::tools::StringTools::Split(ignoredCommonFields, separator, vParts);
+            epg::tools::StringTools::Split(ignoredThemeFields, separator, vParts);
+            _sIgnoredFields.insert(vParts.begin(), vParts.end());
 
             //--
             _logger->log(epg::log::INFO, "[END] initialization: " + epg::tools::TimeTools::getTime());
@@ -152,8 +152,48 @@ namespace app
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
             _computeOrientedChangeDetection(_fsRef, idRefName, _fsUp, idUpName);
+            _removeDuplicates(idRefName);
             _computeOrientedChangeDetection(_fsUp, idUpName, _fsRef, idRefName, false);
+            _removeDuplicates(idUpName, true); //on se sert du champ attrMatch pour identifier les entrées de la 2ème passe (attrMAtch est NULL) et les filtrer (suppression doublons)
             _computeChangeDetection();
+        }
+
+        ///
+        ///
+        ///
+        void ChangeDetectionOp::_removeDuplicates(std::string const& uniqueKey, bool whereAttMatchIsNull) const {
+            //--
+            epg::Context *context = epg::ContextS::getInstance();
+
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const idName = epgParams.getValue(ID).toString();
+
+            //app parameters
+            params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
+            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
+            std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
+            std::string const idRefName = themeParameters->getValue(ID_REF).toString();
+            std::string const idUpName = themeParameters->getValue(ID_UP).toString();
+
+            std::ostringstream ss;
+            ss  << "DELETE FROM "
+                << cdTableName << " a "
+                << "USING " << cdTableName << " b "
+                << "WHERE "
+                << "a."<< idName << " < b."<< idName << " "
+                << "AND "
+                << "a."<< uniqueKey << " = b."<< uniqueKey << " ";
+
+            if ( whereAttMatchIsNull ) {
+                std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+                ss  << "AND a."<< attrMatchName << " IS NULL "
+                    << "AND b."<< attrMatchName << " IS NULL ";
+            }
+            
+            ss << ";";
+
+            context->getDataBaseManager().getConnection()->update(ss.str());
         }
 
         ///
@@ -173,25 +213,29 @@ namespace app
 
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            double const distThreshold = themeParameters->getValue(CD_DIST_THRESHOLD).toDouble();
+            double const cdDistThreshold = themeParameters->getValue(CD_DIST_THRESHOLD).toDouble();
+            double const egalDistThreshold = themeParameters->getValue(CD_EGAL_DIST_THRESHOLD).toDouble();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
 
             std::vector<ign::geometry::Envelope> vBbox = _getBboxes();
             for (std::vector<ign::geometry::Envelope>::const_iterator vit = vBbox.begin() ; vit != vBbox.end() ; ++vit ) {
-
+                std::cout << "processing BBOX [" << (vit-vBbox.begin())+1 << "/" << vBbox.size() << "]";
                 ign::feature::FeatureFilter filter(*vit, countryCodeName+"='"+_countryCode+"'");
                 //DEBUG
                 // epg::tools::FilterTools::addAndConditions(filter, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
 
-                 //LOAD START
+                //LOAD START
+                ign::geometry::Envelope bBoxTarget = *vit;
+                bBoxTarget.expandBy(cdDistThreshold);
+                ign::feature::FeatureFilter filterTarget(bBoxTarget, countryCodeName+"='"+_countryCode+"'");
                 ign::geometry::index::QuadTree<int> qTree;
                 std::vector<ign::feature::Feature> vFeatures;
-                qTree.ensureExtent( *vit );
+                qTree.ensureExtent( bBoxTarget );
 
-                int numTargetFeatures = epg::sql::tools::numFeatures(*fsTarget, filter);
+                int numTargetFeatures = epg::sql::tools::numFeatures(*fsTarget, filterTarget);
                 boost::progress_display displayLoad(numTargetFeatures, std::cout, "[ load target % complete ]\n");
-                ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filter);
+                ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
                 while (itTarget->hasNext())
                 {
                     ++displayLoad;
@@ -215,17 +259,12 @@ namespace app
                     ign::geometry::Geometry const& geomSource = fSource.getGeometry();
                     std::string idSource = fSource.getId();
 
-                    //DEBUG
-                    // if (idSource == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                    //     bool test = true;
-                    // }
-
                     ign::feature::Feature fCd = _fsCd->newFeature();
                     fCd.setAttribute(idSourceName, ign::data::String(idSource));
                     fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
 
                     /// \todo voir si c'est mieux de conserver tous les matchs ou juste le meilleur
-                    double distMax = distThreshold;
+                    double distMax = cdDistThreshold;
                     std::string idMax = "";
                     bool attEqualMax = false;
 
@@ -236,23 +275,7 @@ namespace app
                     for( std::set<int>::const_iterator sit = sTarget.begin() ; sit != sTarget.end() ; ++sit ) {
                         ign::feature::Feature const& fTarget = vFeatures[*sit];
                         std::string idTarget = fTarget.getId();
-                        double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), distThreshold);
-
-                    // ign::feature::FeatureFilter filterTarget(countryCodeName+"='"+_countryCode+"'");
-                    // epg::tools::FilterTools::addAndConditions(filterTarget, "ST_DISTANCE(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + geomSource.toString() + "'),3035)) < "+ign::data::Double(distThreshold).toString());
-                    // ign::feature::FeatureIteratorPtr itTarget = fsTarget->getFeatures(filterTarget);
-                    // while (itTarget->hasNext())
-                    // {
-                    //     ign::feature::Feature const& fTarget = itTarget->next();
-                    //     ign::geometry::Geometry const& geomTarget = fTarget.getGeometry();
-                    //     std::string idTarget = fTarget.getId();
-
-                        //DEBUG
-                        // if (idTarget == "73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                        //     bool test = true;
-                        // }
-
-                        // double hausdorffDist = ign::geometry::algorithm::OptimizedHausdorffDistanceOp::orientedDistance( geomSource, geomTarget, -1, distThreshold );
+                        double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), cdDistThreshold);
                         
                         if( hausdorffDist >= 0 && hausdorffDist < distMax) {
                             distMax = hausdorffDist;
@@ -264,7 +287,7 @@ namespace app
                     }
                     if ( idMax != "" ) {
                         if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(attEqualMax));
-                        fCd.setAttribute(geomMatchName, ign::data::Boolean(distMax==0));
+                        fCd.setAttribute(geomMatchName, ign::data::Boolean(distMax <= egalDistThreshold));
                         fCd.setAttribute(idTargetName, ign::data::String(idMax));
                     } 
                     
@@ -280,20 +303,25 @@ namespace app
 			ign::feature::Feature const& feat1,
 			ign::feature::Feature const& feat2
 		) const {
+
             std::map<std::string, std::string> mAtt1;
             for( size_t i = 0 ; i < feat1.numAttributes() ; ++i )
             {
-                if( feat1.getAttributeName( i ) == feat1.getFeatureType().getDefaultGeometryName() ) continue;
-                if( feat1.getAttributeName( i ) == feat1.getFeatureType().getIdName() ) continue;
-                mAtt1.insert(std::make_pair(feat1.getAttributeName( i ), feat1.getAttribute( i ).toString()));
+                std::string const& fieldName = feat1.getAttributeName(i);
+                if( _sIgnoredFields.find(fieldName) != _sIgnoredFields.end() ) continue;
+                if( fieldName == feat1.getFeatureType().getDefaultGeometryName() ) continue;
+                if( fieldName == feat1.getFeatureType().getIdName() ) continue;
+                mAtt1.insert(std::make_pair(fieldName, feat1.getAttribute(i).toString()));
             }
 
             std::map<std::string, std::string> mAtt2;
             for( size_t i = 0 ; i < feat2.numAttributes() ; ++i )
             {
-                if( feat2.getAttributeName( i ) == feat2.getFeatureType().getDefaultGeometryName() ) continue;
-                if( feat2.getAttributeName( i ) == feat2.getFeatureType().getIdName() ) continue;
-                mAtt2.insert(std::make_pair(feat2.getAttributeName( i ), feat2.getAttribute( i ).toString()));
+                std::string const& fieldName = feat2.getAttributeName(i);
+                if( _sIgnoredFields.find(fieldName) != _sIgnoredFields.end() ) continue;
+                if( fieldName == feat2.getFeatureType().getDefaultGeometryName() ) continue;
+                if( fieldName == feat2.getFeatureType().getIdName() ) continue;
+                mAtt2.insert(std::make_pair(fieldName, feat2.getAttribute(i).toString()));
             }
 
             if ( mAtt2.size() != mAtt1.size() ) return false;
@@ -362,10 +390,11 @@ namespace app
             }
 
             // 2eme passe :
-            std::vector<std::pair<std::string, std::string>> vpModified;
+            std::vector<boost::tuple<std::string, std::string, bool, bool>> vtModified;
+
             // on parcours mmMatch
             // Si on trouve 2 fois id1/id2 = match
-            //   Si modif on ajoute dans vpModified
+            //   Si modif on ajoute dans vtModified
             //   Si stab on ne fait rien
             // Sinon on ajoute id1 dans sDeleted et id2 dans sCreated
             std::set<std::string> sTreated;
@@ -383,17 +412,19 @@ namespace app
                 if (sTreated.find(mmit->first) != sTreated.end() ) continue;
 
                 size_t count = 0;
-                bool stability = true;
+                bool attrStability = true;
+                bool geomStability = true;
                 auto range = mmMatch.equal_range(mmit->first);
                 for (auto rit = range.first; rit != range.second; ++rit) {
                     ++count;
-                    if (!rit->second.first || !rit->second.second ) stability = false;
+                    if (!rit->second.first) geomStability = false;
+                    if (!rit->second.second) attrStability = false;
                 }
                 if (count == 2) {
-                    if ( !stability ) {
+                    if ( !geomStability || !attrStability ) {
                         std::vector<std::string> vIds;
                         epg::tools::StringTools::Split(mmit->first, _separator, vIds);
-                        vpModified.push_back(std::make_pair(vIds.front(), vIds.back()));
+                        vtModified.push_back(boost::make_tuple(vIds.front(), vIds.back(), geomStability, attrStability));
                     }
                 } else {
                     std::vector<std::string> vIds;
@@ -405,8 +436,43 @@ namespace app
                 sTreated.insert(mmit->first);
             }
 
-            //DEBUG
-            _updateCDTAble( vpModified, sDeleted, sCreated );
+            _updateCDTAble( vtModified, sDeleted, sCreated );
+        }
+
+        ///
+        ///
+        ///
+        void ChangeDetectionOp::_explodeBbox(
+            ign::geometry::Envelope const& bbox,
+            std::vector<ign::geometry::Envelope> & vBbox
+        ) const {
+            // app parameters
+            params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
+            double const pitch = themeParameters->getValue(CD_BBOX_MAX_SIDE_LENGTH).toDouble();
+
+            std::set<double> sXbounds = {bbox.xmin(), bbox.xmax()};
+            double nextXbound = *sXbounds.begin() + pitch;
+            while (nextXbound < *sXbounds.rbegin()) {
+                sXbounds.insert(nextXbound);
+                nextXbound += pitch;
+            }
+
+            std::set<double> sYbounds = {bbox.ymin(), bbox.ymax()};
+            double nextYbound = *sYbounds.begin() + pitch;
+            while (nextYbound < *sYbounds.rbegin()) {
+                sYbounds.insert(nextYbound);
+                nextYbound += pitch;
+            }
+            
+            std::set<double>::const_iterator sitxmin = sXbounds.begin();
+            std::set<double>::const_iterator sitxmax = sitxmin;
+            for ( ++sitxmax ; sitxmax != sXbounds.end() ; ++sitxmax, ++sitxmin) {
+                std::set<double>::const_iterator sitymin = sYbounds.begin();
+                std::set<double>::const_iterator sitymax = sitymin;
+                for ( ++sitymax ; sitymax != sYbounds.end() ; ++sitymax, ++sitymin ) {
+                    vBbox.push_back(ign::geometry::Envelope(*sitxmin, *sitxmax, *sitymin, *sitymax));
+                }
+            }
         }
 
         ///
@@ -414,7 +480,11 @@ namespace app
         ///
         std::vector<ign::geometry::Envelope> ChangeDetectionOp::_getBboxes() const {
 
-            return std::vector<ign::geometry::Envelope>(1,ign::geometry::LineString(ign::geometry::Point(4007120, 3018635), ign::geometry::Point(4077702, 2931477)).getEnvelope());
+            //DEBUG
+            std::vector<ign::geometry::Envelope> vBboxDebug;
+            _explodeBbox(ign::geometry::LineString(ign::geometry::Point(4010116,3017065), ign::geometry::Point(4075982,2929050)).getEnvelope(), vBboxDebug);
+            // _explodeBbox(ign::geometry::LineString(ign::geometry::Point(4007120, 3018635), ign::geometry::Point(4077702, 2931477)).getEnvelope(), vBboxDebug);
+            return vBboxDebug;
 
             std::vector<ign::geometry::Envelope> vBbox;
 
@@ -440,7 +510,7 @@ namespace app
                 ign::feature::Feature const& fLand = itLand->next();
                 ign::geometry::Geometry const& geomLand = fLand.getGeometry();
 
-                vBbox.push_back(geomLand.getEnvelope());
+                _explodeBbox(geomLand.getEnvelope(), vBbox);
             }
             delete fsLand;
 
@@ -451,7 +521,7 @@ namespace app
         ///
         ///
         void ChangeDetectionOp::_updateCDTAble(
-            std::vector<std::pair<std::string, std::string>> const& vpModified,
+            std::vector<boost::tuple<std::string, std::string, bool, bool>> const& vtModified,
             std::set<std::string> const& sDeleted,
             std::set<std::string> const& sCreated
         ) const {
@@ -464,10 +534,12 @@ namespace app
 
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string const tableName = themeParameters->getValue(TABLE).toString();
+            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
             std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
+            std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
+            std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
 
             {
                 std::ostringstream ss;
@@ -478,22 +550,41 @@ namespace app
             ign::feature::Feature fCd = _fsCd->newFeature();
             fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
             
-            std::vector<std::pair<std::string, std::string>>::const_iterator vpit;
-            for( vpit = vpModified.begin() ; vpit != vpModified.end() ; ++vpit ) {
-                fCd.setAttribute(idRefName, ign::data::String(vpit->first));
-                fCd.setAttribute(idUpName, ign::data::String(vpit->second));
+            std::vector<boost::tuple<std::string, std::string, bool, bool>>::const_iterator vtit;
+            for( vtit = vtModified.begin() ; vtit != vtModified.end() ; ++vtit ) {
+                fCd.setAttribute(idRefName, ign::data::String(boost::get<0>(*vtit)));
+                fCd.setAttribute(idUpName, ign::data::String(boost::get<1>(*vtit)));
+                fCd.setAttribute(geomMatchName, ign::data::Boolean(boost::get<2>(*vtit)));
+                fCd.setAttribute(attrMatchName, ign::data::Boolean(boost::get<3>(*vtit)));
+
+                ign::feature::Feature fRef;
+                _fsRef->getFeatureById(boost::get<0>(*vtit), fRef);
+                fCd.setGeometry(fRef.getGeometry());
+
                 _fsCd->createFeature(fCd); 
             }
 
+            fCd.setAttribute(geomMatchName, ign::data::Null());
+            fCd.setAttribute(attrMatchName, ign::data::Null());
             fCd.setAttribute(idUpName, ign::data::Null());
             for( std::set<std::string>::const_iterator sit = sDeleted.begin() ; sit != sDeleted.end() ; ++sit ) {
                 fCd.setAttribute(idRefName, ign::data::String(*sit));
+
+                ign::feature::Feature fRef;
+                _fsRef->getFeatureById(*sit, fRef);
+                fCd.setGeometry(fRef.getGeometry());
+
                 _fsCd->createFeature(fCd);
             }
 
             fCd.setAttribute(idRefName, ign::data::Null());
             for( std::set<std::string>::const_iterator sit = sCreated.begin() ; sit != sCreated.end() ; ++sit ) {
                 fCd.setAttribute(idUpName, ign::data::String(*sit));
+
+                ign::feature::Feature fUp;
+                _fsUp->getFeatureById(*sit, fUp);
+                fCd.setGeometry(fUp.getGeometry());
+
                 _fsCd->createFeature(fCd);
             }
         }

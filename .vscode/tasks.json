@@ -89,7 +89,7 @@
         {
             "label": "run the code",
             "type": "shell",
-            "command": "docker run --privileged -v ${workspaceFolder}:/usr/local/src/change_detection change_detection ./bin/ome2_change_detection --c /usr/local/src/change_detection/config/epg_parameters.ini --cc lu --sp 400",
+            "command": "docker run --privileged -v ${workspaceFolder}:/usr/local/src/change_detection change_detection ./bin/ome2_change_detection --c /usr/local/src/change_detection/config/epg_parameters.ini --T tn --t road_link --cc lu --sp 400",
             "group": "build",
             "problemMatcher": []
         },

@@ -1,6 +1,9 @@
 #ifndef _APP_CALCUL_CHANGEDETECTIONROP_H_
 #define _APP_CALCUL_CHANGEDETECTIONROP_H_
 
+//BOOST
+#include <boost/tuple/tuple.hpp>
+
 //SOCLE
 #include <ign/feature/sql/FeatureStorePostgis.h>
 
@@ -53,6 +56,8 @@ namespace calcul{
 		bool                                                     _verbose;
 		//--
 		std::string                                              _separator;
+		//
+		std::set<std::string>                                    _sIgnoredFields;
 
 	private:
 
@@ -61,6 +66,9 @@ namespace calcul{
 
 		//--
 		void _compute() const;
+
+		//--
+		void _removeDuplicates(std::string const& uniqueKey, bool whereAttMatchIsNull = false) const;
 
 		//--
 		void _computeOrientedChangeDetection(
@@ -81,11 +89,17 @@ namespace calcul{
 		void _computeChangeDetection() const;
 
 		//--
+		void _explodeBbox(
+            ign::geometry::Envelope const& bbox,
+            std::vector<ign::geometry::Envelope> & vBbox
+        ) const;
+
+		//--
 		std::vector<ign::geometry::Envelope> _getBboxes() const;
 
 		//--
 		void _updateCDTAble(
-            std::vector<std::pair<std::string, std::string>> const& vpModified,
+            std::vector<boost::tuple<std::string, std::string, bool, bool>> const& vtModified,
             std::set<std::string> const& sDeleted,
             std::set<std::string> const& sCreated
         ) const;

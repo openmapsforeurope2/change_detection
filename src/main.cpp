@@ -28,6 +28,8 @@ int main(int argc, char *argv[])
 	std::string     themeParametersFile = "";
 	std::string     stepCode = "";
 	std::string     countryCode = "";
+	std::string     theme = "";
+	std::string     table = "";
 	bool            verbose = true;
 
 	epg::step::StepSuite< app::params::ThemeParametersS > stepSuite;
@@ -41,6 +43,8 @@ int main(int argc, char *argv[])
     desc.add_options()
         ("help", "produce help message")
         ("c" , po::value< std::string >(&epgParametersFile)     , "conf file" )
+        ("T" , po::value< std::string >(&theme)                 , "theme" )
+        ("t" , po::value< std::string >(&table)                 , "table" )
         ("cc" , po::value< std::string >(&countryCode)          , "country code" )
 		("sp", po::value< std::string >(&stepCode), OperatorDetail.str().c_str())
     ;
@@ -91,6 +95,12 @@ int main(int argc, char *argv[])
         epg::params::tools::loadParams(*themeParameters, themeParametersFile);
         if( countryCode != "" )
             themeParameters->setParameter(COUNTRY_CODE_W, ign::data::String(countryCode));
+        if( theme != "tn" && theme != "hy" && theme != "au" && theme != "ib" )
+            IGN_THROW_EXCEPTION("unknown theme "+theme);
+        themeParameters->setParameter(THEME_W, ign::data::String(theme));
+        if( table == "" )
+            IGN_THROW_EXCEPTION("table name not defined");
+        themeParameters->setParameter(TABLE_W, ign::data::String(table));
 
         //info de connection db
         context->loadEpgParameters( themeParameters->getValue(DB_CONF_FILE).toString() );

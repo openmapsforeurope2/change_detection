@@ -20,7 +20,8 @@ namespace params{
 		_initParameter( LANDMASK_TABLE, "LANDMASK_TABLE");
 		_initParameter( REF_SCHEMA, "REF_SCHEMA");
 		_initParameter( UP_SCHEMA, "UP_SCHEMA");
-		_initParameter( TABLE, "TABLE");
+		_initParameter( THEME_W, "THEME_W");
+		_initParameter( TABLE_W, "TABLE_W");
 		_initParameter( TABLE_REF_SUFFIX, "TABLE_REF_SUFFIX");
 		_initParameter( TABLE_UP_SUFFIX, "TABLE_UP_SUFFIX");
 		_initParameter( TABLE_CD_SUFFIX, "TABLE_CD_SUFFIX");
@@ -30,6 +31,14 @@ namespace params{
 		_initParameter( ATTR_MATCH, "ATTR_MATCH");
 
 		_initParameter( CD_DIST_THRESHOLD, "CD_DIST_THRESHOLD");
+		_initParameter( CD_EGAL_DIST_THRESHOLD, "CD_EGAL_DIST_THRESHOLD");
+		_initParameter( CD_BBOX_MAX_SIDE_LENGTH, "CD_BBOX_MAX_SIDE_LENGTH");
+		_initParameter( CD_IGNORED_FIELDS_SEPARATOR, "CD_IGNORED_FIELDS_SEPARATOR");
+		_initParameter( CD_IGNORED_COMMON_FIELDS, "CD_IGNORED_COMMON_FIELDS");
+		_initParameter( CD_IGNORED_TN_FIELDS, "CD_IGNORED_TN_FIELDS");
+		_initParameter( CD_IGNORED_HY_FIELDS, "CD_IGNORED_HY_FIELDS");
+		_initParameter( CD_IGNORED_AU_FIELDS, "CD_IGNORED_AU_FIELDS");
+		_initParameter( CD_IGNORED_IB_FIELDS, "CD_IGNORED_IB_FIELDS");
 	}
 
 	///
