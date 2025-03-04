@@ -8,7 +8,7 @@
         "request": "launch",
         "program": "/usr/local/src/change_detection/bin/ome2_change_detectiond",
         "cwd": "/usr/local/src/change_detection",
-        "args": ["--c", "/usr/local/src/change_detection/config/epg_parameters.ini", "--T", "tn", "--t", "road_link", "--cc", "lu", "--sp", "400"],
+        "args": ["--c", "/usr/local/src/change_detection/config/epg_parameters.ini", "--T", "tn", "--f", "road_link", "--cc", "lu", "--op", "diff", "--ref", "ref"],
         "stopAtEntry": true,
         "environment": [{ "name": "config", "value": "Debug" }],
         "externalConsole": true,

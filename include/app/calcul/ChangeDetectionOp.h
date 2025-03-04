@@ -24,7 +24,8 @@ namespace calcul{
         /// @param borderCode 
         /// @param verbose 
         ChangeDetectionOp(
-            std::string borderCode,
+            std::string const& feature,
+            std::string const& countryCode,
             bool verbose
         );
 
@@ -34,7 +35,8 @@ namespace calcul{
 
 		/// \brief
 		static void Compute(
-			std::string borderCode, 
+			std::string const& feature,
+            std::string const& countryCode,
 			bool verbose
 		);
 
@@ -50,6 +52,8 @@ namespace calcul{
 		epg::log::EpgLogger*                                     _logger;
 		//--
 		epg::log::ShapeLogger*                                   _shapeLogger;
+		//--
+		std::string                                              _featureName;
 		//--
 		std::string                                              _countryCode;
 		//--

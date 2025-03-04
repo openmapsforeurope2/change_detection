@@ -28,10 +28,12 @@ namespace app
         ///
         ///
         ChangeDetectionOp::ChangeDetectionOp(
-            std::string borderCode,
+            std::string const& featureName,
+            std::string const& countryCode,
             bool verbose
         ) : 
-            _countryCode(borderCode),
+            _featureName(featureName),
+            _countryCode(countryCode),
             _verbose(verbose),
             _separator("+")
         {
@@ -51,10 +53,11 @@ namespace app
         ///
         ///
         void ChangeDetectionOp::Compute(
-			std::string borderCode, 
+			std::string const& feature,
+            std::string const& countryCode,
 			bool verbose
 		) {
-            ChangeDetectionOp op(borderCode, verbose);
+            ChangeDetectionOp op(feature, countryCode, verbose);
             op._compute();
         }
 
@@ -83,10 +86,9 @@ namespace app
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
             std::string const themeName = themeParameters->getValue(THEME_W).toString();
-            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
-            std::string refTableName = tableName + themeParameters->getValue(TABLE_REF_SUFFIX).toString();
-            std::string upTableName = tableName + themeParameters->getValue(TABLE_UP_SUFFIX).toString();
-            std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
+            std::string refTableName = _featureName + themeParameters->getValue(TABLE_REF_SUFFIX).toString();
+            std::string upTableName = _featureName + themeParameters->getValue(TABLE_UP_SUFFIX).toString();
+            std::string cdTableName = _featureName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
@@ -171,8 +173,7 @@ namespace app
 
             //app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
-            std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
+            std::string cdTableName = _featureName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
@@ -223,7 +224,7 @@ namespace app
                 std::cout << "processing BBOX [" << (vit-vBbox.begin())+1 << "/" << vBbox.size() << "]";
                 ign::feature::FeatureFilter filter(*vit, countryCodeName+"='"+_countryCode+"'");
                 //DEBUG
-                // epg::tools::FilterTools::addAndConditions(filter, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4032636 2935777, 4033222 2935310)'::geometry), 3035))");
+                // epg::tools::FilterTools::addAndConditions(filter, "ST_intersects(geom, ST_SetSRID(ST_Envelope('LINESTRING(4042018.800 2954022.411, 4042027.616 2954015.189)'::geometry), 3035))");
 
                 //LOAD START
                 ign::geometry::Envelope bBoxTarget = *vit;
@@ -275,6 +276,7 @@ namespace app
                     for( std::set<int>::const_iterator sit = sTarget.begin() ; sit != sTarget.end() ; ++sit ) {
                         ign::feature::Feature const& fTarget = vFeatures[*sit];
                         std::string idTarget = fTarget.getId();
+
                         double hausdorffDist = sourceMlsTool.orientedHausdorff(fTarget.getGeometry(), cdDistThreshold);
                         
                         if( hausdorffDist >= 0 && hausdorffDist < distMax) {
@@ -377,10 +379,10 @@ namespace app
                 ign::data::Variant const& geomMatch = fCd.getAttribute(geomMatchName);
 
                 //Si idRef not defined
-                if (fCd.getAttribute(idRefName).isNull())
+                if (idRef.isNull())
                     sCreated.insert(idUp.toString());
                 //Si idUp not defined
-                else if (fCd.getAttribute(idUpName).isNull())
+                else if (idUp.isNull())
                     sDeleted.insert(idRef.toString());
                 else {
                     //si attrMatch not defined -> le mettre à true (null lors de la comparaison t2 -> t1 car déjà calculé lors de la comparaison t1 -> t2)
@@ -436,6 +438,19 @@ namespace app
                 sTreated.insert(mmit->first);
             }
 
+            //3eme passe : nettoyage:
+            std::vector<boost::tuple<std::string, std::string, bool, bool>>::const_iterator vtit;
+            for( vtit = vtModified.begin() ; vtit != vtModified.end() ; ++vtit ) {
+                std::string idRef = boost::get<0>(*vtit);
+                std::set<std::string>::const_iterator itDel = sDeleted.find(idRef);
+                if( itDel != sDeleted.end() ) sDeleted.erase(itDel);
+                
+                std::string idUp = boost::get<1>(*vtit);
+                std::set<std::string>::const_iterator itUp = sCreated.find(idUp);
+                if( itUp != sCreated.end() ) sCreated.erase(itUp);
+            }
+
+            //--
             _updateCDTAble( vtModified, sDeleted, sCreated );
         }
 
@@ -483,7 +498,7 @@ namespace app
             //DEBUG
             std::vector<ign::geometry::Envelope> vBboxDebug;
             _explodeBbox(ign::geometry::LineString(ign::geometry::Point(4010116,3017065), ign::geometry::Point(4075982,2929050)).getEnvelope(), vBboxDebug);
-            // _explodeBbox(ign::geometry::LineString(ign::geometry::Point(4007120, 3018635), ign::geometry::Point(4077702, 2931477)).getEnvelope(), vBboxDebug);
+            // _explodeBbox(ign::geometry::LineString(ign::geometry::Point(4042018.800, 2954022.411), ign::geometry::Point(4042027.616, 2954015.189)).getEnvelope(), vBboxDebug);
             return vBboxDebug;
 
             std::vector<ign::geometry::Envelope> vBbox;
@@ -534,8 +549,7 @@ namespace app
 
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string const tableName = themeParameters->getValue(TABLE_W).toString();
-            std::string cdTableName = tableName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
+            std::string cdTableName = _featureName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
