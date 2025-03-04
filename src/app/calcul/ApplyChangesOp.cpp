@@ -103,8 +103,8 @@ namespace app
         ///
         ///
         void ApplyChangesOp::_compute() const {
-            // _delete();
-            // _update();
+            _delete();
+            _update();
             _add();
         }
 
