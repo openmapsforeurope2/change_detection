@@ -103,8 +103,8 @@ namespace app
         ///
         ///
         void ApplyChangesOp::_compute() const {
-            _delete();
-            _update();
+            // _delete();
+            // _update();
             _add();
         }
 
@@ -120,7 +120,7 @@ namespace app
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
-            ign::feature::FeatureFilter filterCd(idRefName+" IS NOT NULL");
+            ign::feature::FeatureFilter filterCd(idRefName+" IS NULL");
 
             int numCDFeatures = epg::sql::tools::numFeatures(*_fsCd, filterCd);
             boost::progress_display display(numCDFeatures, std::cout, "[ apply changes [add] % complete ]\n");
@@ -172,15 +172,9 @@ namespace app
                 ign::feature::Feature fUp;
                 _fsUp->getFeatureById(idUp, fUp);
 
-                _logger->log(epg::log::DEBUG, "coucou1");
-
                 fUp.setId(idRef);
 
-                _logger->log(epg::log::DEBUG, "coucou2");
-
                 _fsRef->modifyFeature(fUp);
-
-                _logger->log(epg::log::DEBUG, "coucou3");
             }
         }
 
