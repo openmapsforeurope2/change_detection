@@ -2,7 +2,7 @@ cmake_minimum_required( VERSION 2.8.3 )
 cmake_policy(SET CMP0020 NEW)
 
 # Definition du projet
-set(PROJECT_NAME ome2_change_detection)
+set(PROJECT_NAME change_detection)
 project(${PROJECT_NAME})
 
 FIND_PATH(SOCLE_EXTERN_ROOT NAMES SocleExterns.cmake
@@ -168,10 +168,10 @@ install(
 	bin
 )
 
-if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/version)
-    file(READ ${CMAKE_CURRENT_LIST_DIR}/version VERSION)
+if (EXISTS ${CMAKE_CURRENT_LIST_DIR}/VERSION)
+    file(READ ${CMAKE_CURRENT_LIST_DIR}/VERSION VERSION)
 else()
-    message("version file not found")
+    message("VERSION file not found")
 	set(VERSION 0.0.0)
 endif ()
 

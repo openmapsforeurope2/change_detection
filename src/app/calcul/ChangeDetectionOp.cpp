@@ -85,25 +85,19 @@ namespace app
             
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string const themeName = themeParameters->getValue(THEME_W).toString();
             std::string refTableName = _featureName + themeParameters->getValue(TABLE_REF_SUFFIX).toString();
             std::string upTableName = _featureName + themeParameters->getValue(TABLE_UP_SUFFIX).toString();
             std::string cdTableName = _featureName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+            std::string const matchingAttrMatchName = themeParameters->getValue(MATCHING_ATTR_MATCH).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
-            std::string const separator = themeParameters->getValue(CD_IGNORED_FIELDS_SEPARATOR).toString();
+            std::string const separator = themeParameters->getValue(CD_FIELDS_SEPARATOR).toString();
             std::string const ignoredCommonFields = themeParameters->getValue(CD_IGNORED_COMMON_FIELDS).toString();
-            std::string ignoredThemeFields = "";
-            if ( themeName == "tn" )
-                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_TN_FIELDS).toString();
-            if ( themeName == "hy" )
-                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_HY_FIELDS).toString();
-            if ( themeName == "au" )
-                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_AU_FIELDS).toString();
-            if ( themeName == "ib" )
-                ignoredThemeFields = themeParameters->getValue(CD_IGNORED_IB_FIELDS).toString();
+            std::string const ignoredThemeFields = themeParameters->getValue(CD_IGNORED_THEME_FIELDS).toString();
+            std::string const matchingCommonFields = themeParameters->getValue(CD_MATCHING_COMMON_FIELDS).toString();
+            std::string const matchingThemeFields = themeParameters->getValue(CD_MATCHING_THEME_FIELDS).toString();
             
 			if ( !context->getDataBaseManager().tableExists(cdTableName) ) {
 
@@ -115,6 +109,7 @@ namespace app
                     << idUpName << " character varying(255), "
 					<< geomMatchName << " boolean,"
 					<< attrMatchName << " boolean,"
+					<< matchingAttrMatchName << " boolean,"
 					<< countryCodeName << " character varying(5)"
 					<< ");"
                     << "CREATE INDEX " << cdTableName +"_"+idRefName+"_idx ON " << cdTableName << " USING btree ("<< idRefName <<");"
@@ -135,10 +130,16 @@ namespace app
             _fsCd = context->getDataBaseManager().getFeatureStore(cdTableName, idName, geomName);
 
             //--
-            std::vector<std::string> vParts;;
-	        epg::tools::StringTools::Split(ignoredCommonFields, separator, vParts);
-            epg::tools::StringTools::Split(ignoredThemeFields, separator, vParts);
-            _sIgnoredFields.insert(vParts.begin(), vParts.end());
+            std::vector<std::string> vIgnoredParts;;
+	        epg::tools::StringTools::Split(ignoredCommonFields, separator, vIgnoredParts);
+            epg::tools::StringTools::Split(ignoredThemeFields, separator, vIgnoredParts);
+            _sIgnoredFields.insert(vIgnoredParts.begin(), vIgnoredParts.end());
+
+            //--
+            std::vector<std::string> vMatchingParts;;
+	        epg::tools::StringTools::Split(matchingCommonFields, separator, vMatchingParts);
+            epg::tools::StringTools::Split(matchingThemeFields, separator, vMatchingParts);
+            _sMatchingFields.insert(vMatchingParts.begin(), vMatchingParts.end());
 
             //--
             _logger->log(epg::log::INFO, "[END] initialization: " + epg::tools::TimeTools::getTime());
@@ -153,6 +154,7 @@ namespace app
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
+            //--
             _computeOrientedChangeDetection(_fsRef, idRefName, _fsUp, idUpName);
             _removeDuplicates(idRefName);
             _computeOrientedChangeDetection(_fsUp, idUpName, _fsRef, idRefName, false);
@@ -177,6 +179,7 @@ namespace app
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
+            //--
             std::ostringstream ss;
             ss  << "DELETE FROM "
                 << cdTableName << " a "
@@ -218,7 +221,9 @@ namespace app
             double const egalDistThreshold = themeParameters->getValue(CD_EGAL_DIST_THRESHOLD).toDouble();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+            std::string const matchingAttrMatchName = themeParameters->getValue(MATCHING_ATTR_MATCH).toString();
 
+            //--
             std::vector<ign::geometry::Envelope> vBbox = _getBboxes();
             for (std::vector<ign::geometry::Envelope>::const_iterator vit = vBbox.begin() ; vit != vBbox.end() ; ++vit ) {
                 std::cout << "processing BBOX [" << (vit-vBbox.begin())+1 << "/" << vBbox.size() << "]";
@@ -267,9 +272,8 @@ namespace app
                     /// \todo voir si c'est mieux de conserver tous les matchs ou juste le meilleur
                     double distMax = cdDistThreshold;
                     std::string idMax = "";
-                    bool attEqualMax = false;
+                    std::pair<bool, bool> pMatchingAttMax = std::make_pair(false, false);
 
-                    //NEW
                     epg::tools::MultiLineStringTool sourceMlsTool( geomSource );
                     std::set<int> sTarget;
                     qTree.query( geomSource.getEnvelope(), sTarget );
@@ -282,13 +286,16 @@ namespace app
                         if( hausdorffDist >= 0 && hausdorffDist < distMax) {
                             distMax = hausdorffDist;
                             idMax = idTarget;
-                            if ( withAttrCompare ) attEqualMax = _attributsEqual(fSource, fTarget);
+                            if ( withAttrCompare ) {
+                                pMatchingAttMax = _attributsEqual(fSource, fTarget);
+                            }
                             
                             if ( distMax == 0 ) break;
                         } 
                     }
                     if ( idMax != "" ) {
-                        if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(attEqualMax));
+                        if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(pMatchingAttMax.first));
+                        if ( withAttrCompare ) fCd.setAttribute(matchingAttrMatchName, ign::data::Boolean(pMatchingAttMax.second));
                         fCd.setAttribute(geomMatchName, ign::data::Boolean(distMax <= egalDistThreshold));
                         fCd.setAttribute(idTargetName, ign::data::String(idMax));
                     } 
@@ -301,7 +308,7 @@ namespace app
         ///
         ///
         ///
-		bool ChangeDetectionOp::_attributsEqual(
+		std::pair<bool, bool> ChangeDetectionOp::_attributsEqual(
 			ign::feature::Feature const& feat1,
 			ign::feature::Feature const& feat2
 		) const {
@@ -326,23 +333,38 @@ namespace app
                 mAtt2.insert(std::make_pair(fieldName, feat2.getAttribute(i).toString()));
             }
 
-            if ( mAtt2.size() != mAtt1.size() ) return false;
+            bool matchingAttrMatch = true;
+            for( std::set<std::string>::const_iterator sit = _sIgnoredFields.begin() ; sit != _sIgnoredFields.end() ; ++sit ) {
+                std::map<std::string, std::string>::const_iterator mit1 = mAtt1.find(mit1->first);
+                std::map<std::string, std::string>::const_iterator mit2 = mAtt2.find(mit2->first);
+
+                if( mit1 != mAtt1.end() && mit2 != mAtt2.end() && mit2->second != mit1->second) {
+                    matchingAttrMatch = false;
+                    break;
+                }
+            }
+            
+            if ( mAtt2.size() != mAtt1.size() ) return std::make_pair(false, matchingAttrMatch);
 
             std::map<std::string, std::string>::const_iterator mit1;
             for ( mit1 = mAtt1.begin() ; mit1 != mAtt1.end() ; ++mit1) {
                 std::map<std::string, std::string>::const_iterator mit2 = mAtt2.find(mit1->first);
-                if( mit2 == mAtt2.end() ) return false;
-                if( mit2->second != mit1->second ) return false;
+                if( mit2 == mAtt2.end() ) return std::make_pair(false, matchingAttrMatch);
+                if( mit2->second != mit1->second ) return std::make_pair(false, matchingAttrMatch);
             }
-            return true;
+            return std::make_pair(true, matchingAttrMatch);
         }
 
-        // supprimer les doublons si dallage
-        // si id1 apparaît un nombre de fois autre que 2 on supprime objet1
-        // si id2 apparaît un nombre de fois autre que 2 on ajoute objet2
-        // si on a 2 fois le couple id1/id2 on regarde si stable ou modifié
-        // pour les cas qui restent (couples qu'on ne trouve qu'une fois) : on supprime l'objet de la table 1 et on ajout objet de la table 2
+        ///
+        ///
+        ///
         void ChangeDetectionOp::_computeChangeDetection() const {
+            // supprimer les doublons si dallage
+            // si id1 apparaît un nombre de fois autre que 2 on supprime objet1
+            // si id2 apparaît un nombre de fois autre que 2 on ajoute objet2
+            // si on a 2 fois le couple id1/id2 on regarde si stable ou modifié
+            // pour les cas qui restent (couples qu'on ne trouve qu'une fois) : on supprime l'objet de la table 1 et on ajout objet de la table 2
+
             //--
             epg::Context *context = epg::ContextS::getInstance();
 
@@ -354,6 +376,7 @@ namespace app
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+            std::string const matchingAttrMatchName = themeParameters->getValue(MATCHING_ATTR_MATCH).toString();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
@@ -361,7 +384,7 @@ namespace app
             // On rempli les containers
             std::set<std::string> sDeleted;
             std::set<std::string> sCreated;
-            std::multimap<std::string, std::pair<bool, bool>> mmMatch; // concaténer id1/id2
+            std::multimap<std::string, boost::tuple<bool, bool, bool>> mmMatch; // concaténer id1/id2
 
             ign::feature::FeatureFilter filter(countryCodeName+"='"+_countryCode+"'");
             int numFeatures = epg::sql::tools::numFeatures(*_fsCd, filter);
@@ -375,8 +398,9 @@ namespace app
                 ign::feature::Feature const& fCd = itFeatCd->next();
                 ign::data::Variant const& idRef = fCd.getAttribute(idRefName);
                 ign::data::Variant const& idUp = fCd.getAttribute(idUpName);
-                ign::data::Variant const& attrMatch = fCd.getAttribute(attrMatchName);
                 ign::data::Variant const& geomMatch = fCd.getAttribute(geomMatchName);
+                ign::data::Variant const& attrMatch = fCd.getAttribute(attrMatchName);
+                ign::data::Variant const& matchingAttrMatch = fCd.getAttribute(matchingAttrMatchName);
 
                 //Si idRef not defined
                 if (idRef.isNull())
@@ -387,12 +411,15 @@ namespace app
                 else {
                     //si attrMatch not defined -> le mettre à true (null lors de la comparaison t2 -> t1 car déjà calculé lors de la comparaison t1 -> t2)
                     bool isAttMatch = attrMatch.isNull() ? true : attrMatch.toBoolean();
-                    mmMatch.insert(std::make_pair(idRef.toString()+_separator+idUp.toString(), std::make_pair(geomMatch.toBoolean(), isAttMatch)));
+                    //idem pour matchingAttrMatch
+                    bool isMatchingAttMatch = matchingAttrMatch.isNull() ? true : matchingAttrMatch.toBoolean();
+
+                    mmMatch.insert(std::make_pair(idRef.toString()+_separator+idUp.toString(),boost::make_tuple(geomMatch.toBoolean(), isAttMatch, isMatchingAttMatch)));
                 }
             }
 
             // 2eme passe :
-            std::vector<boost::tuple<std::string, std::string, bool, bool>> vtModified;
+            std::vector<boost::tuple<std::string, std::string, bool, bool, bool>> vtModified;
 
             // on parcours mmMatch
             // Si on trouve 2 fois id1/id2 = match
@@ -403,30 +430,28 @@ namespace app
 
             boost::progress_display display2(mmMatch.size(), std::cout, "[ change detection(2/2) % complete ]\n");
 
-            std::multimap<std::string, std::pair<bool, bool>>::const_iterator mmit;
-            for( mmit = mmMatch.begin() ; mmit != mmMatch.end() ; ++mmit ) {
-                //DEBUG
-                // if( mmit->first == "73c3038d-1629-43d9-a5ea-7116a8e36202+73c3038d-1629-43d9-a5ea-7116a8e36202") {
-                //     bool test = true;
-                // }
-
+            std::multimap<std::string, boost::tuple<bool, bool, bool>>::const_iterator mmit;
+            for( mmit = mmMatch.begin() ; mmit != mmMatch.end() ; ++mmit )
+            {
                 ++display2;
                 if (sTreated.find(mmit->first) != sTreated.end() ) continue;
 
                 size_t count = 0;
-                bool attrStability = true;
                 bool geomStability = true;
+                bool attrStability = true;
+                bool matchingAttrStability = true;
                 auto range = mmMatch.equal_range(mmit->first);
                 for (auto rit = range.first; rit != range.second; ++rit) {
                     ++count;
-                    if (!rit->second.first) geomStability = false;
-                    if (!rit->second.second) attrStability = false;
+                    if (!boost::get<0>(rit->second)) geomStability = false;
+                    if (!boost::get<1>(rit->second)) attrStability = false;
+                    if (!boost::get<2>(rit->second)) matchingAttrStability = false;
                 }
                 if (count == 2) {
                     if ( !geomStability || !attrStability ) {
                         std::vector<std::string> vIds;
                         epg::tools::StringTools::Split(mmit->first, _separator, vIds);
-                        vtModified.push_back(boost::make_tuple(vIds.front(), vIds.back(), geomStability, attrStability));
+                        vtModified.push_back(boost::make_tuple(vIds.front(), vIds.back(), geomStability, attrStability, matchingAttrStability));
                     }
                 } else {
                     std::vector<std::string> vIds;
@@ -439,7 +464,7 @@ namespace app
             }
 
             //3eme passe : nettoyage:
-            std::vector<boost::tuple<std::string, std::string, bool, bool>>::const_iterator vtit;
+            std::vector<boost::tuple<std::string, std::string, bool, bool, bool>>::const_iterator vtit;
             for( vtit = vtModified.begin() ; vtit != vtModified.end() ; ++vtit ) {
                 std::string idRef = boost::get<0>(*vtit);
                 std::set<std::string>::const_iterator itDel = sDeleted.find(idRef);
@@ -536,7 +561,7 @@ namespace app
         ///
         ///
         void ChangeDetectionOp::_updateCDTAble(
-            std::vector<boost::tuple<std::string, std::string, bool, bool>> const& vtModified,
+            std::vector<boost::tuple<std::string, std::string, bool, bool, bool>> const& vtModified,
             std::set<std::string> const& sDeleted,
             std::set<std::string> const& sCreated
         ) const {
@@ -554,6 +579,7 @@ namespace app
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
             std::string const geomMatchName = themeParameters->getValue(GEOM_MATCH).toString();
             std::string const attrMatchName = themeParameters->getValue(ATTR_MATCH).toString();
+            std::string const matchingAttrMatchName = themeParameters->getValue(MATCHING_ATTR_MATCH).toString();
 
             {
                 std::ostringstream ss;
@@ -564,12 +590,13 @@ namespace app
             ign::feature::Feature fCd = _fsCd->newFeature();
             fCd.setAttribute(countryCodeName, ign::data::String(_countryCode));
             
-            std::vector<boost::tuple<std::string, std::string, bool, bool>>::const_iterator vtit;
+            std::vector<boost::tuple<std::string, std::string, bool, bool, bool>>::const_iterator vtit;
             for( vtit = vtModified.begin() ; vtit != vtModified.end() ; ++vtit ) {
                 fCd.setAttribute(idRefName, ign::data::String(boost::get<0>(*vtit)));
                 fCd.setAttribute(idUpName, ign::data::String(boost::get<1>(*vtit)));
                 fCd.setAttribute(geomMatchName, ign::data::Boolean(boost::get<2>(*vtit)));
                 fCd.setAttribute(attrMatchName, ign::data::Boolean(boost::get<3>(*vtit)));
+                fCd.setAttribute(matchingAttrMatchName, ign::data::Boolean(boost::get<4>(*vtit)));
 
                 ign::feature::Feature fRef;
                 _fsRef->getFeatureById(boost::get<0>(*vtit), fRef);
@@ -580,6 +607,7 @@ namespace app
 
             fCd.setAttribute(geomMatchName, ign::data::Null());
             fCd.setAttribute(attrMatchName, ign::data::Null());
+            fCd.setAttribute(matchingAttrMatchName, ign::data::Null());
             fCd.setAttribute(idUpName, ign::data::Null());
             for( std::set<std::string>::const_iterator sit = sDeleted.begin() ; sit != sDeleted.end() ; ++sit ) {
                 fCd.setAttribute(idRefName, ign::data::String(*sit));

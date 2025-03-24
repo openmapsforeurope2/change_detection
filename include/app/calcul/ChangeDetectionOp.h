@@ -19,21 +19,25 @@ namespace calcul{
 
 	public:
 
-	
-        /// @brief 
-        /// @param borderCode 
-        /// @param verbose 
+        /// @brief Constructeur
+        /// @param featureName Nom de la classe d'objet à traiter
+        /// @param countryCode Code pays simple
+        /// @param verbose Mode verbeux
         ChangeDetectionOp(
             std::string const& feature,
             std::string const& countryCode,
             bool verbose
         );
 
-        /// @brief 
+        /// @brief Destructeur
         ~ChangeDetectionOp();
 
 
-		/// \brief
+		/// @brief Lance le calcul du différentiel entra la table de référence et la table mise à jour.
+		/// Le calcul est réalisé selon un dallage. La taille des dalles est paramétrable.
+		/// @param featureName Nom de la classe d'objet à traiter
+        /// @param countryCode Code pays simple
+        /// @param verbose Mode verbeux
 		static void Compute(
 			std::string const& feature,
             std::string const& countryCode,
@@ -62,6 +66,8 @@ namespace calcul{
 		std::string                                              _separator;
 		//
 		std::set<std::string>                                    _sIgnoredFields;
+		//
+		std::set<std::string>                                    _sMatchingFields;
 
 	private:
 
@@ -84,7 +90,7 @@ namespace calcul{
 		) const;
 
 		//--
-		bool _attributsEqual(
+		std::pair<bool, bool> _attributsEqual(
 			ign::feature::Feature const& feat1,
 			ign::feature::Feature const& feat2
 		) const;
@@ -103,7 +109,7 @@ namespace calcul{
 
 		//--
 		void _updateCDTAble(
-            std::vector<boost::tuple<std::string, std::string, bool, bool>> const& vtModified,
+            std::vector<boost::tuple<std::string, std::string, bool, bool, bool>> const& vtModified,
             std::set<std::string> const& sDeleted,
             std::set<std::string> const& sCreated
         ) const;

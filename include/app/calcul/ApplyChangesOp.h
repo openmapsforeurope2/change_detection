@@ -10,39 +10,46 @@
 
 //EPG
 #include <epg/log/EpgLogger.h>
-#include <epg/log/ShapeLogger.h>
 
 
 namespace app{
 namespace calcul{
 
+	/// @brief Classe à utiliser pour 'jouer' un différentiel
 	class ApplyChangesOp {
 
 	public:
-
 	
-        /// @brief 
+        /// @brief Constructeur
+        /// @param featureName Nom de la classe d'objet à traiter
+        /// @param countryCode Code pays simple
+        /// @param refSchema Schéma de la référence
+        /// @param upSchema Schéma de la mise à jour
+        /// @param verbose Mode verbeux
         ApplyChangesOp(
             std::string const& featureName,
             std::string const& countryCode,
-            detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme,
+            detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema,
             bool verbose = false
         );
 
-        /// @brief 
+        /// @brief Destructeur
         ~ApplyChangesOp();
 
-
-		/// \brief
+		/// @brief Lance l'application du différentiel sur la table de référence
+        /// @param featureName Nom de la classe d'objet à traiter
+        /// @param countryCode Code pays simple
+        /// @param refSchema Schéma de la référence
+        /// @param upSchema Schéma de la mise à jour
+        /// @param verbose Mode verbeux
 		static void Compute(
 			std::string const& featureName,
             std::string const& countryCode,
-            detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme,
+            detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema,
             bool verbose = false
 		);
-
 
 	private:
 		//--
@@ -54,8 +61,6 @@ namespace calcul{
 		//--
 		epg::log::EpgLogger*                                     _logger;
 		//--
-		epg::log::ShapeLogger*                                   _shapeLogger;
-		//--
 		std::string                                              _featureName;
 		//--
 		std::string                                              _countryCode;
@@ -66,8 +71,8 @@ namespace calcul{
 
 		//--
 		void _init(
-			detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme
+			detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema
 		);
 
 		//--

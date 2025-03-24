@@ -25,15 +25,15 @@ namespace app
         ApplyChangesOp::ApplyChangesOp(
             std::string const& featureName,
             std::string const& countryCode,
-            detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme,
+            detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema,
             bool verbose
         ) : 
             _featureName(featureName),
             _countryCode(countryCode),
             _verbose(verbose)
         {
-            _init(refTheme, upTheme);
+            _init(refSchema, upSchema);
         }
 
         ///
@@ -41,8 +41,6 @@ namespace app
         ///
         ApplyChangesOp::~ApplyChangesOp()
         {
-
-            // _shapeLogger->closeShape("ps_cutting_ls");
         }
 
         ///
@@ -51,11 +49,11 @@ namespace app
         void ApplyChangesOp::Compute(
 			std::string const& featureName,
             std::string const& countryCode,
-            detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme,
+            detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema,
             bool verbose
 		) {
-            ApplyChangesOp op(featureName, countryCode, refTheme, upTheme, verbose);
+            ApplyChangesOp op(featureName, countryCode, refSchema, upSchema, verbose);
             op._compute();
         }
 
@@ -63,17 +61,13 @@ namespace app
         ///
         ///
         void ApplyChangesOp::_init(
-            detail::SCHEMA refTheme,
-			detail::SCHEMA upTheme
+            detail::SCHEMA refSchema,
+			detail::SCHEMA upSchema
         )
         {
             //--
             _logger = epg::log::EpgLoggerS::getInstance();
             _logger->log(epg::log::INFO, "[START] initialization: " + epg::tools::TimeTools::getTime());
-
-            //--
-            _shapeLogger = epg::log::ShapeLoggerS::getInstance();
-            // _shapeLogger->addShape("ps_cutting_ls", epg::log::ShapeLogger::POLYGON);
 
             //--
             epg::Context *context = epg::ContextS::getInstance();
@@ -82,12 +76,11 @@ namespace app
             epg::params::EpgParameters const& epgParams = context->getEpgParameters();
             std::string const idName = epgParams.getValue(ID).toString();
             std::string const geomName = epgParams.getValue(GEOM).toString();
-            // std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
             
             // app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
-            std::string refTableName = _featureName + detail::getSuffix(refTheme);
-            std::string upTableName = _featureName + detail::getSuffix(upTheme);
+            std::string refTableName = _featureName + detail::getSuffix(refSchema);
+            std::string upTableName = _featureName + detail::getSuffix(upSchema);
             std::string cdTableName = _featureName + themeParameters->getValue(TABLE_CD_SUFFIX).toString();
 
             //--
@@ -115,12 +108,17 @@ namespace app
             //--
             epg::Context *context = epg::ContextS::getInstance();
 
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+
             //app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
             ign::feature::FeatureFilter filterCd(idRefName+" IS NULL");
+            epg::tools::FilterTools::addAndConditions(filterCd, countryCodeName+"='"+_countryCode+"'");
 
             int numCDFeatures = epg::sql::tools::numFeatures(*_fsCd, filterCd);
             boost::progress_display display(numCDFeatures, std::cout, "[ apply changes [add] % complete ]\n");
@@ -147,12 +145,17 @@ namespace app
             //--
             epg::Context *context = epg::ContextS::getInstance();
 
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+
             //app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
             ign::feature::FeatureFilter filterCd(idRefName+" IS NOT NULL AND "+idUpName+" IS NOT NULL");
+            epg::tools::FilterTools::addAndConditions(filterCd, countryCodeName+"='"+_countryCode+"'");
 
             int numCDFeatures = epg::sql::tools::numFeatures(*_fsCd, filterCd);
             boost::progress_display display(numCDFeatures, std::cout, "[ apply changes [update] % complete ]\n");
@@ -165,9 +168,6 @@ namespace app
                 ign::feature::Feature const& fCd = itCd->next();
                 std::string const& idRef = fCd.getAttribute(idRefName).toString();
                 std::string const& idUp = fCd.getAttribute(idUpName).toString();
-
-                _logger->log(epg::log::DEBUG, idUp);
-                _logger->log(epg::log::DEBUG, idRef);
 
                 ign::feature::Feature fUp;
                 _fsUp->getFeatureById(idUp, fUp);
@@ -185,12 +185,17 @@ namespace app
             //--
             epg::Context *context = epg::ContextS::getInstance();
 
+            // epg parameters
+            epg::params::EpgParameters const& epgParams = context->getEpgParameters();
+            std::string const countryCodeName = epgParams.getValue(COUNTRY_CODE).toString();
+
             //app parameters
             params::ThemeParameters *themeParameters = params::ThemeParametersS::getInstance();
             std::string const idRefName = themeParameters->getValue(ID_REF).toString();
             std::string const idUpName = themeParameters->getValue(ID_UP).toString();
 
             ign::feature::FeatureFilter filterCd(idUpName+" IS NULL");
+            epg::tools::FilterTools::addAndConditions(filterCd, countryCodeName+"='"+_countryCode+"'");
 
             int numCDFeatures = epg::sql::tools::numFeatures(*_fsCd, filterCd);
             boost::progress_display display(numCDFeatures, std::cout, "[ apply changes [delete] % complete ]\n");

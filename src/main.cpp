@@ -56,8 +56,8 @@ int main(int argc, char *argv[])
         ("f" , po::value< std::string >(&feature)               , "feature" )
         ("cc" , po::value< std::string >(&countryCode)          , "country code" )
         ("op" , po::value< std::string >(&operation)            , "operation" )
-        ("ref", po::value< std::string >(&ref)                  , "ref" )
-        ("up", po::value< std::string >(&up)                    , "up" )
+        ("ref", po::value< std::string >(&ref)                  , "ref schema" )
+        ("up", po::value< std::string >(&up)                    , "up schema" )
     ;
 
     //main log
@@ -78,6 +78,23 @@ int main(int argc, char *argv[])
             std::cout << desc << std::endl;
             return 1;
         }
+
+        if( countryCode == "" )
+            IGN_THROW_EXCEPTION("missing country code");
+        if( theme != themeIb && theme != themeAu && theme != themeHy && theme != themeTn )
+            IGN_THROW_EXCEPTION("unknown theme "+theme);
+        if( feature == "" )
+            IGN_THROW_EXCEPTION("feature name not defined");
+        if( operation != computeDiffOp && operation != applyDiffOp )
+            IGN_THROW_EXCEPTION("unknown operation "+operation);
+        if( operation == computeDiffOp ) {
+            up = schemaUp;
+	        ref = schemaRef;
+        }
+        if( ref != schemaProd && ref != schemaRef && ref != schemaUp && ref != schemaWork )
+            IGN_THROW_EXCEPTION("unknown 'ref' schema "+ref);
+        if( up != schemaProd && up != schemaRef && up != schemaUp && up != schemaWork )
+            IGN_THROW_EXCEPTION("unknown 'up' schema "+up);
 
         //parametres EPG
 		context->loadEpgParameters( epgParametersFile );
@@ -102,20 +119,7 @@ int main(int argc, char *argv[])
 		//theme parameters
 		themeParametersFile = context->getConfigParameters().getValue(THEME_PARAMETER_FILE).toString();
 		app::params::ThemeParameters* themeParameters = app::params::ThemeParametersS::getInstance();
-        epg::params::tools::loadParams(*themeParameters, themeParametersFile);
-        if( countryCode == "" )
-            IGN_THROW_EXCEPTION("missing country code");
-        if( theme != themeIb && theme != themeAu && theme != themeHy && theme != themeTn )
-            IGN_THROW_EXCEPTION("unknown theme "+theme);
-        themeParameters->setParameter(THEME_W, ign::data::String(theme));
-        if( feature == "" )
-            IGN_THROW_EXCEPTION("feature name not defined");
-        if( operation != computeDiffOp && operation != applyDiffOp )
-            IGN_THROW_EXCEPTION("unknown operation "+operation);
-        if( ref != schemaProd && ref != schemaRef && ref != schemaUp && ref != schemaWork )
-            IGN_THROW_EXCEPTION("unknown 'ref' schema "+ref);
-        if( up != schemaProd && up != schemaRef && up != schemaUp && up != schemaWork )
-            IGN_THROW_EXCEPTION("unknown 'up' schema "+up);
+        epg::params::tools::loadParams(*themeParameters, themeParametersFile, theme);
 
         //info de connection db
         context->loadEpgParameters( themeParameters->getValue(DB_CONF_FILE).toString() );
@@ -133,14 +137,7 @@ int main(int argc, char *argv[])
         context->getDataBaseManager().setSearchPath(themeParameters->getValue(UP_SCHEMA).toString());
         context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(REF_SCHEMA).toString());
         ome2::utils::setTableName<app::params::ThemeParametersS>(LANDMASK_TABLE);
-        if(theme == themeIb)
-            context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(IB_SCHEMA).toString());
-        else if (theme == themeAu)
-            context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(AU_SCHEMA).toString());
-        else if (theme == themeHy)
-            context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(HY_SCHEMA).toString());
-        else if (theme == themeTn)
-            context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(TN_SCHEMA).toString());
+        context->getDataBaseManager().addSchemaToSearchPath(themeParameters->getValue(THEME_SCHEMA).toString());
 
         detail::SCHEMA upSchema = up == schemaProd ? detail::PROD : up == schemaRef ? detail::REF : up == schemaUp ? detail::UP : up == schemaWork ? detail::WORK : detail::UP;
         detail::SCHEMA refSchema = ref == schemaProd ? detail::PROD : ref == schemaRef ? detail::REF : ref == schemaUp ? detail::UP : ref == schemaWork ? detail::WORK : detail::PROD;
