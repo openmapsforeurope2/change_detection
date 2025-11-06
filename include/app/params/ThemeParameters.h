@@ -10,7 +10,7 @@
 
 
 
-	enum HY_PARAMETERS{
+	enum TH_PARAMETERS{
 		DB_CONF_FILE,
 		LANDMASK_TABLE,
 		REF_SCHEMA,
@@ -40,9 +40,9 @@
 namespace app{
 namespace params{
 
-	class ThemeParameters : public epg::params::ParametersT< HY_PARAMETERS >
+	class ThemeParameters : public epg::params::ParametersT< TH_PARAMETERS >
 	{
-		typedef  epg::params::ParametersT< HY_PARAMETERS > Base;
+		typedef  epg::params::ParametersT< TH_PARAMETERS > Base;
 
 		public:
 

@@ -1,4 +1,4 @@
-# area_matching
+# change_detection
 
 ## Context
 
@@ -19,6 +19,9 @@ Deux traitements peuvent être réalisés grâce à cette application:
 ### 1. Le calcul du differentiel
 
 Cette fonction réalise une comparaison entre deux versions d'une même table et identifie les objets ajoutés, supprimés et modifiés. Le résultat de ce calcul est enregistré dans une table Postgresql.
+Afin de pouvoir réaliser des différentiels sur des grands ensembles de données le calcul est ici effectué selon un dallage. Cette subdivision de l'espace est réalisée par l'outil lors de l'étape d'initialisation à partir de l'emprise du pays traité. L'ensemble des objets situés dans la dalle de travail sont chargés en mémoire et indexé spatialement afin d'optimiser le temps de calcul.
+
+
 
 ### 2. l'application du différentiel sur la table cible
 
@@ -31,7 +34,7 @@ Les paramètres de configuration permettent de déterminer le comportement en d�
 
 Certains champs peuvent être défini comme impactant pour le processus de raccordement au frontières. Si une différence est détectée sur l'un de ces champs cela est renseigné dans la table résultat. Les objets concernés seront par la suite utilisés pour le calcul des zones de mise à jour et le processus de raccordement leur sera donc appliqué.
 
-On trouve dans le [dossier de configuration](https://github.com/openmapsforeurope2/area_matching/tree/main/config) les fichiers suivants :
+On trouve dans le [dossier de configuration](https://github.com/openmapsforeurope2/change_detection/tree/main/config) les fichiers suivants :
 - epg_parameters.ini : regroupe des paramètres de base issus de la bibliothèque libepg qui constitue le socle de développement l'outil. Ce fichier est aussi le fichier chapeau qui pointe vers les autres fichiers de configurations.
 - db_conf.ini : informations de connexion à la base de données.
 - theme_parameters.ini : configuration des paramètres spécifiques à l'application.

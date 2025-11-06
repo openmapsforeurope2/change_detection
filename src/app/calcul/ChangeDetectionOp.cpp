@@ -291,7 +291,7 @@ namespace app
                             }
                             
                             if ( distMax == 0 ) break;
-                        } 
+                        }
                     }
                     if ( idMax != "" ) {
                         if ( withAttrCompare ) fCd.setAttribute(attrMatchName, ign::data::Boolean(pMatchingAttMax.first));
